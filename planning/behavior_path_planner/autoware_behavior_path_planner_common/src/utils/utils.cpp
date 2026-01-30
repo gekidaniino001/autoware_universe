@@ -376,16 +376,22 @@ bool set_goal(
 
     // NOTE: remove the first point to keep the original path length
     output_ptr->points.erase(output_ptr->points.begin());
+    const size_t resampled_index = std::min(
+      min_dist_out_of_circle_index + 1, 
+      output_ptr->points.size()
+    );
 
-    const auto lanelets = getUniqueLaneletsFromPath(
-      input.points.begin() + min_dist_out_of_circle_index + 1, input.points.end(),
-      get_lanelet_by_id);
-    fillLaneIdsFromMap(
-      output_ptr->points.begin() + min_dist_out_of_circle_index + 1, output_ptr->points.end(),
-      lanelets);
-    fillLongitudinalVelocityFromInputPath(
-      output_ptr->points.begin() + min_dist_out_of_circle_index + 1, output_ptr->points.end(),
-      input);
+    if (resampled_index < output_ptr->points.size()) {
+      const auto lanelets = getUniqueLaneletsFromPath(
+        input.points.begin() + min_dist_out_of_circle_index + 1, input.points.end(),
+        get_lanelet_by_id);
+      fillLaneIdsFromMap(
+        output_ptr->points.begin() + resampled_index, output_ptr->points.end(),
+        lanelets);
+      fillLongitudinalVelocityFromInputPath(
+        output_ptr->points.begin() + resampled_index, output_ptr->points.end(),
+        input);
+    }
 
     output_ptr->points.back().point.longitudinal_velocity_mps = 0.0;
     return true;
