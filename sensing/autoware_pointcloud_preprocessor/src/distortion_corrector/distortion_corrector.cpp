@@ -352,6 +352,12 @@ void DistortionCorrector<T>::undistort_pointcloud(
   bool is_imu_time_stamp_too_late = false;
   constexpr double time_diff = 0.1;
 
+  // [DEBUG] timestamp diagnostics
+  const double header_stamp_sec =
+    pointcloud.header.stamp.sec + 1e-9 * pointcloud.header.stamp.nanosec;
+  double max_twist_time_diff = 0.0;
+  double max_imu_time_diff = 0.0;
+
   for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_time_stamp) {
     bool is_twist_valid = true;
     bool is_imu_valid = true;
@@ -368,6 +374,7 @@ void DistortionCorrector<T>::undistort_pointcloud(
       is_twist_time_stamp_too_late = true;
       is_twist_valid = false;
     }
+    max_twist_time_diff = std::max(max_twist_time_diff, std::abs(current_point_stamp - twist_stamp));
 
     // Get closest IMU information
     if (use_imu && !angular_velocity_queue_.empty()) {
@@ -380,6 +387,7 @@ void DistortionCorrector<T>::undistort_pointcloud(
         is_imu_time_stamp_too_late = true;
         is_imu_valid = false;
       }
+      max_imu_time_diff = std::max(max_imu_time_diff, std::abs(current_point_stamp - imu_stamp));
     } else {
       is_imu_valid = false;
     }
@@ -421,6 +429,17 @@ void DistortionCorrector<T>::undistort_pointcloud(
   timestamp_mismatch_fraction_ = total_points > 0 ? static_cast<float>(timestamp_mismatch_count_) /
                                                       static_cast<float>(total_points)
                                                   : 0.0f;
+
+  // [DEBUG] Print timestamp diagnostics every 1 second
+  RCLCPP_INFO_STREAM_THROTTLE(
+    node_.get_logger(), *node_.get_clock(), 1000 /* ms */,
+    "[ts_debug]"
+      << " header=" << std::fixed << std::setprecision(3) << header_stamp_sec
+      << " first_pt=" << first_point_time_stamp_sec
+      << " last_pt=" << prev_time_stamp_sec
+      << " scan_dur_ms=" << (prev_time_stamp_sec - first_point_time_stamp_sec) * 1000.0
+      << " max_twist_diff_ms=" << max_twist_time_diff * 1000.0
+      << " max_imu_diff_ms=" << max_imu_time_diff * 1000.0);
 
   warn_if_timestamp_is_too_late(is_twist_time_stamp_too_late, is_imu_time_stamp_too_late);
 }
