@@ -336,6 +336,35 @@ void DistortionCorrector<T>::undistort_pointcloud(
   const double first_point_time_stamp_sec{
     pointcloud.header.stamp.sec + 1e-9 * (pointcloud.header.stamp.nanosec + *it_time_stamp)};
 
+  // [BUGFIX] Detect and correct stale header.stamp caused by cut_angle == sync_angle race
+  // condition in the nebula/Hesai driver. When both are set to 0°, the PTP sync and scan cut
+  // happen simultaneously, causing header.stamp to lag first_pt by ~1 scan period (~100ms).
+  // We correct header.stamp and all per-point time_stamp offsets so that absolute point times
+  // (= header.stamp + time_stamp_ns) remain unchanged.
+  {
+    const double header_stamp_sec_pre =
+      pointcloud.header.stamp.sec + 1e-9 * pointcloud.header.stamp.nanosec;
+    const double header_offset_sec = first_point_time_stamp_sec - header_stamp_sec_pre;
+    constexpr double kStaleHeaderThresholdSec = 0.05;  // 50ms = half a scan period
+    if (header_offset_sec > kStaleHeaderThresholdSec) {
+      RCLCPP_WARN_STREAM_THROTTLE(
+        node_.get_logger(), *node_.get_clock(), 1000,
+        "[ts_debug] Stale header.stamp detected: first_pt is "
+          << std::fixed << std::setprecision(1) << header_offset_sec * 1000.0
+          << "ms ahead of header. Correcting header.stamp and time_stamp offsets.");
+      const auto correction_ns = static_cast<int64_t>(header_offset_sec * 1e9);
+      pointcloud.header.stamp =
+        rclcpp::Time(pointcloud.header.stamp) +
+        rclcpp::Duration(std::chrono::nanoseconds(correction_ns));
+      // Subtract correction from each point's time_stamp to keep absolute times the same
+      sensor_msgs::PointCloud2Iterator<std::uint32_t> it_ts_corr(pointcloud, "time_stamp");
+      const auto corr_u32 = static_cast<uint32_t>(correction_ns);
+      for (; it_ts_corr != it_ts_corr.end(); ++it_ts_corr) {
+        *it_ts_corr = (*it_ts_corr >= corr_u32) ? *it_ts_corr - corr_u32 : 0u;
+      }
+    }
+  }
+
   std::deque<geometry_msgs::msg::TwistStamped>::iterator it_twist;
   std::deque<geometry_msgs::msg::Vector3Stamped>::iterator it_imu;
   get_twist_and_imu_iterator(use_imu, first_point_time_stamp_sec, it_twist, it_imu);
