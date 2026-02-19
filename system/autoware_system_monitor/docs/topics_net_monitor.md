@@ -126,3 +126,20 @@
 | UDP rcv buf errors per unit time | 0               |
 | total UDP snd buf errors         | 0               |
 | UDP snd buf errors per unit time | 0               |
+
+<b>[how to fix]</b>
+
+`UDP rcv buf errors` typically occur when LiDAR sensors transmit UDP packets faster than
+the driver can read them and the OS kernel drops packets due to a small receive buffer.
+
+Increase the kernel UDP receive buffer with the helper script from `tier4_sensing_launch`:
+
+```bash
+# Apply for the current session
+sudo bash $(ros2 pkg prefix tier4_sensing_launch)/share/tier4_sensing_launch/scripts/setup_lidar_udp_buffer.sh
+
+# Apply persistently (survives reboot)
+sudo bash $(ros2 pkg prefix tier4_sensing_launch)/share/tier4_sensing_launch/scripts/setup_lidar_udp_buffer.sh --persistent
+```
+
+This sets `net.core.rmem_max` and `net.core.rmem_default` to 25 MB (26214400 bytes).
